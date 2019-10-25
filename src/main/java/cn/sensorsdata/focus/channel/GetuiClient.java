@@ -41,6 +41,7 @@ import com.gexin.rp.sdk.template.NotificationTemplate;
 import com.gexin.rp.sdk.template.TransmissionTemplate;
 import com.gexin.rp.sdk.template.style.Style0;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -242,7 +243,20 @@ public class GetuiClient extends ChannelClient {
    * 构造透传内容，可修改此函数实现自定义格式的透传内容
    */
   private String constructTransmissionContent(PushTask pushTask) {
-    return pushTask.getSfData();
+    // 一个定制透传内容的样例：
+    // 运营人员在 SF 计划配置了自定义触达字段 news_id，触达时需要按 myapp://news/${news_id} 格式透传到前端，例如：
+    // 触达配置了 news_id = 123 ，需要推送到 APP 的透传字段是 myapp://news/123 ，拼接样例代码如下：
+    if (MapUtils.isNotEmpty(pushTask.getCustomized())) { // pushTask.getCustomized() 包含自定义字段
+      Map<String, String> customized = pushTask.getCustomized();
+      String newsId = customized.get("news_id"); // 从自定义字段里取 news_id 字段的值
+      if (StringUtils.isNotBlank(newsId)) { // 判断值是否不为空
+        String transmissionContent = "myapp://news/" + newsId; // 按要求格式拼接
+        return transmissionContent; // 返回透传内容
+      }
+    }
+
+    // 例如默认需要返回 myapp://home
+    return "myapp://home";
   }
 
   /**
