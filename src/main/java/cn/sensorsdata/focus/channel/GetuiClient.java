@@ -55,7 +55,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class GetuiClient extends ChannelClient {
 
-  private static final String GETUI_API_HOST = "http://sdk.open.api.igexin.com/apiex.htm";
   private static final long MESSAGE_OFFLINE_EXPIRE_TIME = 24 * 3600 * 1000L;
 
   // 每次批量发送请求最多包含多少推送 ID
@@ -66,6 +65,7 @@ public class GetuiClient extends ChannelClient {
 
   private IGtPush pushClient;
 
+  private String getuiApiHost;
   private String appKey;
   private String appId;
 
@@ -77,10 +77,11 @@ public class GetuiClient extends ChannelClient {
 
     appId = getuiChannelConfig.getAppId();
     appKey = getuiChannelConfig.getAppKey();
+    getuiApiHost = getuiChannelConfig.getUrl();
     String masterSecret = getuiChannelConfig.getMasterSecret();
 
     // 这个 client 的 close 还要发 http 请求，比较奇怪，先不管
-    pushClient = new IGtPush(GETUI_API_HOST, appKey, masterSecret);
+    pushClient = new IGtPush(getuiApiHost, appKey, masterSecret);
 
     this.intentTemplate = getuiChannelConfig.getIntentTemplate();
   }
