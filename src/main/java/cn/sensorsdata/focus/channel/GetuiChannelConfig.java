@@ -29,6 +29,9 @@ import javax.validation.constraints.Size;
 @Data
 public class GetuiChannelConfig extends ChannelConfig {
 
+  @ConfigField(cname = "请求地址", desc = "个推请求地址", defaultValue = "http://sdk.open.api.igexin.com/apiex.htm")
+  private String url = "http://sdk.open.api.igexin.com/apiex.htm";
+
   @ConfigField(cname = "AppID", desc = "平台 AppID，可在平台配置页面获取")
   @NotBlank
   @Size(min = 22, max = 22)
