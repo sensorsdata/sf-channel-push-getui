@@ -68,6 +68,7 @@ public class GetuiClient extends ChannelClient {
   private String getuiApiHost;
   private String appKey;
   private String appId;
+  private String pushType;
 
   private static final String STR_SF_DATA = "sf_data";
 
@@ -78,6 +79,7 @@ public class GetuiClient extends ChannelClient {
     appId = getuiChannelConfig.getAppId();
     appKey = getuiChannelConfig.getAppKey();
     getuiApiHost = getuiChannelConfig.getUrl();
+    pushType = getuiChannelConfig.getPushType();
     String masterSecret = getuiChannelConfig.getMasterSecret();
 
     // 这个 client 的 close 还要发 http 请求，比较奇怪，先不管
@@ -97,7 +99,12 @@ public class GetuiClient extends ChannelClient {
       MessagingTask messagingTask = taskList.get(0);
       PushTask pushTask = messagingTask.getPushTask();
 
-      AbstractTemplate template = constructTemplate2(pushTask);
+      AbstractTemplate template = null;
+      if (StringUtils.isBlank(pushType) || "PASSTHROUGH".equalsIgnoreCase(pushType)) {
+        template = constructTemplate2(pushTask);
+      } else {
+        template = constructTemplateForNotification(pushTask);
+      }
       template.setAppId(appId);
       template.setAppkey(appKey);
 
@@ -247,6 +254,22 @@ public class GetuiClient extends ChannelClient {
   }
 
   /**
+   * ios消息推送
+   *
+   * @param pushTask 单条推送任务
+   * @return
+   */
+  private APNPayload constructAPNPayload(PushTask pushTask) {
+    APNPayload apnPayload = new APNPayload();
+    APNPayload.DictionaryAlertMsg alertMsg = new APNPayload.DictionaryAlertMsg();
+    alertMsg.setTitle(pushTask.getMsgTitle());
+    alertMsg.setBody(pushTask.getMsgContent());
+    apnPayload.setAlertMsg(alertMsg);
+    apnPayload.addCustomMsg(STR_SF_DATA, pushTask.getSfData());
+    return apnPayload;
+  }
+
+  /**
    * 使用透传模板构造消息
    */
   private TransmissionTemplate constructTemplate2(PushTask pushTask) {
@@ -268,12 +291,7 @@ public class GetuiClient extends ChannelClient {
       transmissionTemplate.set3rdNotifyInfo(notify);
     }
 
-    APNPayload apnPayload = new APNPayload();
-    APNPayload.DictionaryAlertMsg alertMsg = new APNPayload.DictionaryAlertMsg();
-    alertMsg.setTitle(pushTask.getMsgTitle());
-    alertMsg.setBody(pushTask.getMsgContent());
-    apnPayload.setAlertMsg(alertMsg);
-    apnPayload.addCustomMsg(STR_SF_DATA, pushTask.getSfData());
+    APNPayload apnPayload = constructAPNPayload(pushTask);
     transmissionTemplate.setAPNInfo(apnPayload);
 
     log.debug("construct template. [content='{}', intent='{}', cid='{}']", transmissionContent, intent,
@@ -282,9 +300,9 @@ public class GetuiClient extends ChannelClient {
   }
 
   /**
-   * 使用通知模板构造消息。默认使用 constructTemplate2 而不是本函数
+   * 使用通知模板构造消息。默认使用 constructTemplate2
    */
-  private NotificationTemplate constructTemplate(PushTask pushTask) { // NOSONAR 暂时保留这种方式
+  private NotificationTemplate constructTemplateForNotification(PushTask pushTask) {
     NotificationTemplate notificationTemplate = new NotificationTemplate();
     // 透传消息设置，1 为强制启动应用，客户端接收到消息后就会立即启动应用；2 为等待应用启动
     notificationTemplate.setTransmissionType(1);
@@ -292,12 +310,7 @@ public class GetuiClient extends ChannelClient {
     notificationTemplate.setStyle(constructStyle(pushTask));
     notificationTemplate.setTransmissionContent(pushTask.getSfData());
 
-    APNPayload apnPayload = new APNPayload();
-    APNPayload.DictionaryAlertMsg alertMsg = new APNPayload.DictionaryAlertMsg();
-    alertMsg.setTitle(pushTask.getMsgTitle());
-    alertMsg.setBody(pushTask.getMsgContent());
-    apnPayload.setAlertMsg(alertMsg);
-    apnPayload.addCustomMsg(STR_SF_DATA, pushTask.getSfData());
+    APNPayload apnPayload = constructAPNPayload(pushTask);
     notificationTemplate.setAPNInfo(apnPayload);
 
     return notificationTemplate;
