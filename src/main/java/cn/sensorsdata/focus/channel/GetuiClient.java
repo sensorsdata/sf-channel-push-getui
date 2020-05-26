@@ -23,6 +23,7 @@ import com.sensorsdata.focus.channel.entry.MessagingTask;
 import com.sensorsdata.focus.channel.entry.PushTask;
 import com.sensorsdata.focus.channel.push.PushTaskUtils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
@@ -47,6 +48,7 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -68,6 +70,7 @@ public class GetuiClient extends ChannelClient {
   private String getuiApiHost;
   private String appKey;
   private String appId;
+  private String pushType;
 
   private static final String STR_SF_DATA = "sf_data";
 
@@ -78,6 +81,7 @@ public class GetuiClient extends ChannelClient {
     appId = getuiChannelConfig.getAppId();
     appKey = getuiChannelConfig.getAppKey();
     getuiApiHost = getuiChannelConfig.getUrl();
+    pushType = getuiChannelConfig.getPushType();
     String masterSecret = getuiChannelConfig.getMasterSecret();
 
     // 这个 client 的 close 还要发 http 请求，比较奇怪，先不管
@@ -97,7 +101,12 @@ public class GetuiClient extends ChannelClient {
       MessagingTask messagingTask = taskList.get(0);
       PushTask pushTask = messagingTask.getPushTask();
 
-      AbstractTemplate template = constructTemplate2(pushTask);
+      AbstractTemplate template = null;
+      if (StringUtils.isBlank(pushType) || "PASSTHROUGH".equalsIgnoreCase(pushType)) {
+        template = constructTemplate2(pushTask);
+      } else {
+        template = constructTemplateForNotification(pushTask);
+      }
       template.setAppId(appId);
       template.setAppkey(appKey);
 
@@ -107,6 +116,8 @@ public class GetuiClient extends ChannelClient {
         message.setData(template);
         message.setOffline(true);
         message.setOfflineExpireTime(MESSAGE_OFFLINE_EXPIRE_TIME);
+        // 厂商下发策略：控制消息经由个推通道或厂商下发。
+        message.setStrategyJson(constructStrategyJson());
 
         singleMessageBatch.add(Pair.of(message, messagingTask));
         log.debug("add push task into batch. [task='{}']", messagingTask);
@@ -126,6 +137,8 @@ public class GetuiClient extends ChannelClient {
         message.setOffline(true);
         // 离线有效时间，单位为毫秒，可选
         message.setOfflineExpireTime(MESSAGE_OFFLINE_EXPIRE_TIME);
+        // 厂商下发策略：控制消息经由个推通道或厂商下发
+        message.setStrategyJson(constructStrategyJson());
 
         String failReason = null;
         try {
@@ -247,6 +260,41 @@ public class GetuiClient extends ChannelClient {
   }
 
   /**
+   * ios消息推送
+   *
+   * @param pushTask 单条推送任务
+   * @return
+   */
+  private APNPayload constructAPNPayload(PushTask pushTask) {
+    APNPayload apnPayload = new APNPayload();
+    APNPayload.DictionaryAlertMsg alertMsg = new APNPayload.DictionaryAlertMsg();
+    alertMsg.setTitle(pushTask.getMsgTitle());
+    alertMsg.setBody(pushTask.getMsgContent());
+    apnPayload.setAlertMsg(alertMsg);
+    apnPayload.addCustomMsg(STR_SF_DATA, pushTask.getSfData());
+    return apnPayload;
+  }
+
+  /**
+   * 构建厂商下发策略：控制消息经由个推通道或厂商下发。
+   * 主要影响iOS通知消息
+   * 具体信息可以参考：http://docs.getui.com/getui/server/java/push/
+   *
+   * @return
+   */
+  private String constructStrategyJson() {
+    String result = null;
+    try {
+      Map<String, Integer> strategyJsonMap = new HashMap<>();
+      strategyJsonMap.put("ios", 4);
+      result = OBJECT_MAPPER.writeValueAsString(strategyJsonMap);
+    } catch (JsonProcessingException e) {
+      log.error("construct strategyJson exception. ", e);
+    }
+    return result;
+  }
+
+  /**
    * 使用透传模板构造消息
    */
   private TransmissionTemplate constructTemplate2(PushTask pushTask) {
@@ -268,12 +316,7 @@ public class GetuiClient extends ChannelClient {
       transmissionTemplate.set3rdNotifyInfo(notify);
     }
 
-    APNPayload apnPayload = new APNPayload();
-    APNPayload.DictionaryAlertMsg alertMsg = new APNPayload.DictionaryAlertMsg();
-    alertMsg.setTitle(pushTask.getMsgTitle());
-    alertMsg.setBody(pushTask.getMsgContent());
-    apnPayload.setAlertMsg(alertMsg);
-    apnPayload.addCustomMsg(STR_SF_DATA, pushTask.getSfData());
+    APNPayload apnPayload = constructAPNPayload(pushTask);
     transmissionTemplate.setAPNInfo(apnPayload);
 
     log.debug("construct template. [content='{}', intent='{}', cid='{}']", transmissionContent, intent,
@@ -282,22 +325,17 @@ public class GetuiClient extends ChannelClient {
   }
 
   /**
-   * 使用通知模板构造消息。默认使用 constructTemplate2 而不是本函数
+   * 使用通知模板构造消息。默认使用 constructTemplate2
    */
-  private NotificationTemplate constructTemplate(PushTask pushTask) { // NOSONAR 暂时保留这种方式
+  private NotificationTemplate constructTemplateForNotification(PushTask pushTask) {
     NotificationTemplate notificationTemplate = new NotificationTemplate();
     // 透传消息设置，1 为强制启动应用，客户端接收到消息后就会立即启动应用；2 为等待应用启动
-    notificationTemplate.setTransmissionType(1);
+    notificationTemplate.setTransmissionType(2);
     // 这里也可以传消息，但如果目的只是打开 App，可以不传
     notificationTemplate.setStyle(constructStyle(pushTask));
     notificationTemplate.setTransmissionContent(pushTask.getSfData());
 
-    APNPayload apnPayload = new APNPayload();
-    APNPayload.DictionaryAlertMsg alertMsg = new APNPayload.DictionaryAlertMsg();
-    alertMsg.setTitle(pushTask.getMsgTitle());
-    alertMsg.setBody(pushTask.getMsgContent());
-    apnPayload.setAlertMsg(alertMsg);
-    apnPayload.addCustomMsg(STR_SF_DATA, pushTask.getSfData());
+    APNPayload apnPayload = constructAPNPayload(pushTask);
     notificationTemplate.setAPNInfo(apnPayload);
 
     return notificationTemplate;
