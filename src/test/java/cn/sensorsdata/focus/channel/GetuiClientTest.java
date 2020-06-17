@@ -24,8 +24,10 @@ import junit.framework.TestCase;
 import org.junit.Ignore;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class GetuiClientTest extends TestCase {
@@ -45,21 +47,28 @@ public class GetuiClientTest extends TestCase {
     getuiChannelConfig.setAppKey(APP_KEY);
     getuiChannelConfig.setMasterSecret(MASTER_SECRET);
 
-    PushTask pushTask = new PushTask();
-    pushTask.setLandingType(LandingType.CUSTOMIZED);
-    Map<String, String> testMap = new LinkedHashMap<>();
-    testMap.put("aaa", "bb");
-    pushTask.setCustomized(testMap);
-    pushTask.setMsgContent("content111");
-    pushTask.setMsgTitle("title123");
-    pushTask.setClientId(CLIENT_ID);
+    List<MessagingTask> messagingTaskList = new ArrayList<>();
+    for (int i=0; i<3; i++){
 
-    MessagingTask messagingTask = new MessagingTask();
-    messagingTask.setPushTask(pushTask);
+      PushTask pushTask = new PushTask();
+      pushTask.setLandingType(LandingType.CUSTOMIZED);
+      Map<String, String> testMap = new LinkedHashMap<>();
+      testMap.put("aaa", "bb");
+      pushTask.setCustomized(testMap);
+      pushTask.setMsgContent("content111"+i);
+      pushTask.setMsgTitle("title123");
+      pushTask.setClientId(CLIENT_ID);
+      MessagingTask messagingTask = new MessagingTask();
+      messagingTask.setPushTask(pushTask);
+      messagingTaskList.add(messagingTask);
+      messagingTaskList.add(messagingTask);
+    }
 
     GetuiClient getuiClient = new GetuiClient();
     getuiClient.initChannelClient(getuiChannelConfig);
-    getuiClient.send(Collections.singletonList(messagingTask));
+
+
+    getuiClient.send(messagingTaskList);
     getuiClient.close();
   }
 }

@@ -112,7 +112,7 @@ public class GetuiClient extends ChannelClient {
 
       } else {
         List<Target> targets = new ArrayList<>();
-        for (MessagingTask task : messagingTasks) {
+        for (MessagingTask task : taskList) {
           Target target = new Target();
           target.setAppId(appId);
           target.setClientId(task.getPushTask().getClientId());
@@ -140,12 +140,12 @@ public class GetuiClient extends ChannelClient {
             failReason = result;
           }
         } catch (Exception e) {
-          log.warn("push with exception. [tasks='{}']", messagingTasks);
+          log.warn("push with exception. [tasks='{}']", taskList);
           log.warn("exception detail:", e);
           failReason = ExceptionUtils.getMessage(e);
         }
 
-        for (MessagingTask task : messagingTasks) {
+        for (MessagingTask task : taskList) {
           task.setSuccess(failReason == null);
           task.setFailReason(failReason);
         }
