@@ -65,6 +65,7 @@ public class GetuiClient extends ChannelClient {
 
   private IGtPush pushClient;
 
+  private String getuiApiHost;
   private String appKey;
   private String appId;
 
@@ -76,7 +77,7 @@ public class GetuiClient extends ChannelClient {
 
     appId = getuiChannelConfig.getAppId();
     appKey = getuiChannelConfig.getAppKey();
-    String getuiApiHost = getuiChannelConfig.getUrl();
+    getuiApiHost = getuiChannelConfig.getUrl();
     String masterSecret = getuiChannelConfig.getMasterSecret();
 
     // 这个 client 的 close 还要发 http 请求，比较奇怪，先不管
