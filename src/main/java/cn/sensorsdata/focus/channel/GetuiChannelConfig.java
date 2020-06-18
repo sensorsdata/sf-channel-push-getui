@@ -44,7 +44,7 @@ public class GetuiChannelConfig extends ChannelConfig {
 
   @ConfigField(cname = "MasterSecret", desc = "平台 MasterSecret，可在平台配置页面获取")
   @NotBlank
-  @Size(min = 22, max = 22)
+  @Size(min = 21, max = 22)
   private String masterSecret;
 
   @ConfigField(cname = "安卓推送 Intent 模板", desc = "可选配置。设置第三方厂商通道使用的 Intent 模板。")
