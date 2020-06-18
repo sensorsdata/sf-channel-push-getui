@@ -133,7 +133,7 @@ public class GetuiClient extends ChannelClient {
           // 2.3.2 pushMessageToList-对指定用户列表推送消息
           String taskId = pushClient.getContentId(message);
           IPushResult ret = pushClient.pushMessageToList(taskId, targets);
-          log.debug("finish push process. [tasks='{}', response='{}']", messagingTasks, ret.getResponse());
+          log.debug("finish push process. [tasks='{}', response='{}']", taskList, ret.getResponse());
 
           // 如果发送多条数据，只要有一条成功，这个接口就返回 ok
           String result = (String) ret.getResponse().get("result");
