@@ -108,6 +108,9 @@ public class GetuiClient extends ChannelClient {
         message.setOffline(true);
         message.setOfflineExpireTime(MESSAGE_OFFLINE_EXPIRE_TIME);
 
+        // 设置默认厂商推送策略为不论现线或者离线都通过第三方厂商通道下发
+        message.setStrategyJson("{\"default\":2}");
+
         singleMessageBatch.add(Pair.of(message, messagingTask));
         log.debug("add push task into batch. [task='{}']", messagingTask);
 
