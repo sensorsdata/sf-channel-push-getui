@@ -29,6 +29,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.gexin.fastjson.JSONObject;
 import com.gexin.rp.sdk.base.IBatch;
 import com.gexin.rp.sdk.base.IPushResult;
+import com.gexin.rp.sdk.base.IPacket;
 import com.gexin.rp.sdk.base.impl.ListMessage;
 import com.gexin.rp.sdk.base.impl.SingleMessage;
 import com.gexin.rp.sdk.base.impl.Target;
