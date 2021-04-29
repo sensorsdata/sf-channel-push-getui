@@ -29,19 +29,22 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.gexin.fastjson.JSONObject;
 import com.gexin.rp.sdk.base.IBatch;
 import com.gexin.rp.sdk.base.IPushResult;
-import com.gexin.rp.sdk.base.IPacket;
 import com.gexin.rp.sdk.base.impl.ListMessage;
 import com.gexin.rp.sdk.base.impl.SingleMessage;
 import com.gexin.rp.sdk.base.impl.Target;
 import com.gexin.rp.sdk.base.notify.Notify;
 import com.gexin.rp.sdk.base.payload.APNPayload;
+import com.gexin.rp.sdk.base.payload.MultiMedia;
 import com.gexin.rp.sdk.dto.GtReq;
 import com.gexin.rp.sdk.http.IGtPush;
 import com.gexin.rp.sdk.template.AbstractTemplate;
+import com.gexin.rp.sdk.template.LinkTemplate;
 import com.gexin.rp.sdk.template.NotificationTemplate;
+import com.gexin.rp.sdk.template.StartActivityTemplate;
 import com.gexin.rp.sdk.template.TransmissionTemplate;
 import com.gexin.rp.sdk.template.style.Style0;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -52,7 +55,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-@SfChannelClient(version = "v0.1.1", desc = "SF 个推推送客户端")
+@SfChannelClient(version = "v0.1.4.2", desc = "SF 个推推送客户端")
 @Slf4j
 public class GetuiClient extends ChannelClient {
 
@@ -97,8 +100,20 @@ public class GetuiClient extends ChannelClient {
     for (List<MessagingTask> taskList : taskGroups) {
       MessagingTask messagingTask = taskList.get(0);
       PushTask pushTask = messagingTask.getPushTask();
+      AbstractTemplate template = null;
 
-      AbstractTemplate template = constructTemplate2(pushTask);
+      String landingType = pushTask.getLandingType().name();
+      switch (landingType) {
+        case "CUSTOMIZED":
+          template = startActivityTemplate(pushTask);
+          break;
+        case "OPEN_APP":
+          template = constructTemplate2(pushTask);
+          break;
+        case "LINK":
+          template = linkTemplate(pushTask);
+          break;
+      }
       template.setAppId(appId);
       template.setAppkey(appKey);
 
@@ -112,8 +127,9 @@ public class GetuiClient extends ChannelClient {
         // 设置默认厂商推送策略为不论现线或者离线都通过第三方厂商通道下发
         message.setStrategyJson("{\"default\":2}");
 
+
         singleMessageBatch.add(Pair.of(message, messagingTask));
-        log.debug("add push task into batch. [task='{}']", messagingTask);
+        log.info("add push task into batch. [task='{}']", messagingTask);
 
       } else {
         List<Target> targets = new ArrayList<>();
@@ -140,7 +156,7 @@ public class GetuiClient extends ChannelClient {
           // 2.3.2 pushMessageToList-对指定用户列表推送消息
           String taskId = pushClient.getContentId(message);
           IPushResult ret = pushClient.pushMessageToList(taskId, targets);
-          log.debug("finish push process. [tasks='{}', response='{}']", taskList, ret.getResponse());
+          log.info("finish push process. [tasks='{}', response='{}']", taskList, ret.getResponse());
 
           // 如果发送多条数据，只要有一条成功，这个接口就返回 ok
           String result = (String) ret.getResponse().get("result");
@@ -203,7 +219,7 @@ public class GetuiClient extends ChannelClient {
     }
 
     Map<String, Object> response = pushResult.getResponse();
-    log.debug("finish batch push process. [response='{}']", response);
+    log.info("finish batch push process. [response='{}']", response);
 
     // 取推送结果
     JSONObject infoJson = (JSONObject) response.get("info");
@@ -231,7 +247,12 @@ public class GetuiClient extends ChannelClient {
     // 配置通知栏图标
     style.setLogo("");
     // 配置通知栏网络图标
-    style.setLogoUrl("");
+    String logoUrl = "";
+    if (MapUtils.isNotEmpty(pushTask.getCustomized()) && StringUtils.isNotBlank(
+        pushTask.getCustomized().get("logoUrl"))) {
+      logoUrl = pushTask.getCustomized().get("logoUrl");
+    }
+    style.setLogoUrl(logoUrl);
     // 设置通知是否响铃，震动，或者可清除
     style.setRing(true);
     style.setVibrate(true);
@@ -259,7 +280,7 @@ public class GetuiClient extends ChannelClient {
   private TransmissionTemplate constructTemplate2(PushTask pushTask) {
     TransmissionTemplate transmissionTemplate = new TransmissionTemplate();
     // 透传消息设置，1 为强制启动应用，客户端接收到消息后就会立即启动应用；2 为等待应用启动
-    transmissionTemplate.setTransmissionType(2);
+    transmissionTemplate.setTransmissionType(1);
     // 这里也可以传消息，但如果目的只是打开 App，可以不传
     String transmissionContent = constructTransmissionContent(pushTask);
     transmissionTemplate.setTransmissionContent(transmissionContent);
@@ -275,38 +296,84 @@ public class GetuiClient extends ChannelClient {
       transmissionTemplate.set3rdNotifyInfo(notify);
     }
 
-    APNPayload apnPayload = new APNPayload();
-    APNPayload.DictionaryAlertMsg alertMsg = new APNPayload.DictionaryAlertMsg();
-    alertMsg.setTitle(pushTask.getMsgTitle());
-    alertMsg.setBody(pushTask.getMsgContent());
-    apnPayload.setAlertMsg(alertMsg);
-    apnPayload.addCustomMsg(STR_SF_DATA, pushTask.getSfData());
+    APNPayload apnPayload = constructAPNInfo(pushTask);
     transmissionTemplate.setAPNInfo(apnPayload);
 
-    log.debug("construct template. [content='{}', intent='{}', cid='{}']", transmissionContent, intent,
+    log.info("construct template. [content='{}', intent='{}', cid='{}']", transmissionContent, intent,
         pushTask.getClientId());
     return transmissionTemplate;
   }
 
   /**
-   * 使用通知模板构造消息。默认使用 constructTemplate2 而不是本函数
+   * 使用通知-打开应用首页模板构造消息
    */
   private NotificationTemplate constructTemplate(PushTask pushTask) { // NOSONAR 暂时保留这种方式
     NotificationTemplate notificationTemplate = new NotificationTemplate();
     // 透传消息设置，1 为强制启动应用，客户端接收到消息后就会立即启动应用；2 为等待应用启动
     notificationTemplate.setTransmissionType(1);
-    // 这里也可以传消息，但如果目的只是打开 App，可以不传
     notificationTemplate.setStyle(constructStyle(pushTask));
+    // 这里也可以传消息，但如果目的只是打开 App，可以不传
     notificationTemplate.setTransmissionContent(pushTask.getSfData());
 
+    APNPayload apnPayload = constructAPNInfo(pushTask);
+    notificationTemplate.setAPNInfo(apnPayload);
+
+    return notificationTemplate;
+  }
+
+  /**
+   * 使用通知-打开应用内页模板构造消息
+   */
+  private StartActivityTemplate startActivityTemplate(PushTask pushTask) {
+    StartActivityTemplate template = new StartActivityTemplate();
+
+    template.setStyle(constructStyle(pushTask));
+    String intent = PushTaskUtils.generateIntentFromTemplate(pushTask, intentTemplate);
+
+    template.setIntent(intent); //最大长度限制为1000
+
+    APNPayload apnPayload = constructAPNInfo(pushTask);
+    template.setAPNInfo(apnPayload);
+
+    return template;
+  }
+
+
+  /**
+   * 使用通知-打开浏览器网页模板构造消息
+   */
+  private LinkTemplate linkTemplate(PushTask pushTask) {
+    LinkTemplate template = new LinkTemplate();
+    String linkUrl = pushTask.getLinkUrl();
+
+    template.setUrl(linkUrl);
+    template.setStyle(constructStyle(pushTask));
+    APNPayload apnPayload = constructAPNInfo(pushTask);
+    template.setAPNInfo(apnPayload);
+
+    return template;
+
+  }
+
+  private APNPayload constructAPNInfo(PushTask pushTask) {
     APNPayload apnPayload = new APNPayload();
     APNPayload.DictionaryAlertMsg alertMsg = new APNPayload.DictionaryAlertMsg();
     alertMsg.setTitle(pushTask.getMsgTitle());
     alertMsg.setBody(pushTask.getMsgContent());
     apnPayload.setAlertMsg(alertMsg);
-    apnPayload.addCustomMsg(STR_SF_DATA, pushTask.getSfData());
-    notificationTemplate.setAPNInfo(apnPayload);
 
-    return notificationTemplate;
+    if (MapUtils.isNotEmpty(pushTask.getCustomized()) && StringUtils.isNotBlank(
+        pushTask.getCustomized().get("logoUrl"))) {
+      String logoUrl = pushTask.getCustomized().get("logoUrl");
+      apnPayload.addMultiMedia(new MultiMedia().setResType(MultiMedia.MediaType.pic)
+          .setResUrl(logoUrl)
+          .setOnlyWifi(true));
+    }
+
+    apnPayload.addCustomMsg(STR_SF_DATA, pushTask.getSfData());
+    return apnPayload;
+
   }
+
+
 }
